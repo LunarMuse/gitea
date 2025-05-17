@@ -340,10 +340,14 @@ func repoAssignment(ctx *Context, repo *repo_model.Repository) {
 		return
 	}
 
-	ctx.Repo.Permission, err = access_model.GetUserRepoPermission(ctx, repo, ctx.Doer)
-	if err != nil {
-		ctx.ServerError("GetUserRepoPermission", err)
-		return
+	if ctx.DoerNeedTwoFactorAuth() {
+		ctx.Repo.Permission = access_model.PermissionNoAccess()
+	} else {
+		ctx.Repo.Permission, err = access_model.GetUserRepoPermission(ctx, repo, ctx.Doer)
+		if err != nil {
+			ctx.ServerError("GetUserRepoPermission", err)
+			return
+		}
 	}
 
 	if !ctx.Repo.Permission.HasAnyUnitAccessOrPublicAccess() && !canWriteAsMaintainer(ctx) {
@@ -791,8 +795,8 @@ func RepoRefByType(detectRefType git.RefType) func(*Context) {
 	return func(ctx *Context) {
 		var err error
 		refType := detectRefType
-		if ctx.Repo.Repository.IsBeingCreated() {
-			return // no git repo, so do nothing, users will see a "migrating" UI provided by "migrate/migrating.tmpl"
+		if ctx.Repo.Repository.IsBeingCreated() || ctx.Repo.Repository.IsBroken() {
+			return // no git repo, so do nothing, users will see a "migrating" UI provided by "migrate/migrating.tmpl", or empty repo guide
 		}
 		// Empty repository does not have reference information.
 		if ctx.Repo.Repository.IsEmpty {
